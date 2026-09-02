@@ -1,0 +1,260 @@
+<!DOCTYPE html>
+<html lang="pt">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>WineCard</title>
+    <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        html, body, #root { width: 100%; height: 100%; }
+        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #f5f5f5; }
+        :root { --primary: #378add; --danger: #e24b4a; --border: #e0e0e0; --text-primary: #1a1a1a; --text-secondary: #666; }
+        .view { display: flex; flex-direction: column; height: 100vh; padding: 1rem; background: #f5f5f5; overflow-y: auto; }
+        .view h1 { margin: 0 0 1.5rem 0; font-size: 22px; font-weight: 500; }
+        .view h2 { margin-top: 0; margin-bottom: 1.5rem; font-size: 18px; font-weight: 500; }
+        .btn { padding: 12px 16px; border-radius: 8px; font-size: 14px; cursor: pointer; border: none; font-weight: 500; width: 100%; }
+        .btn-primary { background: var(--primary); color: white; margin-bottom: 12px; }
+        .btn-primary:hover { background: #185fa5; }
+        .btn-secondary { background: white; color: var(--text-primary); border: 0.5px solid var(--border); }
+        .summary-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-bottom: 1.5rem; }
+        .summary-card { background: white; border: 0.5px solid var(--border); border-radius: 8px; padding: 1rem; text-align: center; }
+        .summary-value { font-size: 20px; font-weight: 500; margin-top: 8px; }
+        .wine-item { background: white; border: 0.5px solid var(--border); border-radius: 8px; padding: 1rem; margin-bottom: 12px; cursor: pointer; display: flex; justify-content: space-between; }
+        .wine-item p { margin: 0; }
+        .wine-name { font-weight: 500; margin-bottom: 4px; }
+        .wine-type { font-size: 12px; background: #e6f1fb; color: var(--primary); padding: 4px 8px; border-radius: 4px; font-weight: 500; }
+        .wine-item > div { flex: 1; }
+        .form-group { margin-bottom: 1rem; }
+        .form-group label { display: block; font-size: 13px; color: var(--text-secondary); margin-bottom: 6px; }
+        .form-group input, .form-group textarea, .form-group select { width: 100%; padding: 8px; font-size: 14px; border: 0.5px solid var(--border); border-radius: 8px; font-family: inherit; }
+        .form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+        .btn-back { background: none; border: none; color: var(--text-primary); cursor: pointer; font-size: 14px; margin-bottom: 1rem; }
+        .wine-card { background: white; border-radius: 12px; border: 0.5px solid var(--border); padding: 1rem; margin-bottom: 1rem; }
+        .empty-state { flex: 1; display: flex; align-items: center; justify-content: center; text-align: center; }
+        .button-row { display: flex; gap: 12px; margin-top: 1rem; }
+        .button-row .btn { flex: 1; margin-bottom: 0; }
+        .btn-danger { background: #fce0e0; color: var(--danger); border: 0.5px solid #f5b5b5; }
+    </style>
+</head>
+<body>
+    <div id="root"></div>
+    <script type="text/babel">
+        const { useState, useEffect, useRef } = React;
+
+        function WineCard() {
+            const [wines, setWines] = useState([]);
+            const [currentView, setCurrentView] = useState('cellar');
+            const [selectedWine, setSelectedWine] = useState(null);
+            const [editingWine, setEditingWine] = useState(null);
+            const [newWine, setNewWine] = useState(null);
+
+            useEffect(() => {
+                const saved = localStorage.getItem('wines');
+                if (saved) setWines(JSON.parse(saved));
+            }, []);
+
+            useEffect(() => {
+                localStorage.setItem('wines', JSON.stringify(wines));
+            }, [wines]);
+
+            const addWineToStock = () => {
+                if (!newWine || !newWine.name.trim()) {
+                    alert('Preenche o nome do vinho');
+                    return;
+                }
+                setWines([{ id: Date.now(), ...newWine }, ...wines]);
+                setNewWine(null);
+                setCurrentView('cellar');
+            };
+
+            const updateWine = (id, updatedData) => {
+                setWines(wines.map(w => w.id === id ? { ...w, ...updatedData } : w));
+                setEditingWine(null);
+                setSelectedWine(null);
+            };
+
+            const markAsDrunk = (id) => {
+                const wine = wines.find(w => w.id === id);
+                if (wine && wine.quantity > 1) {
+                    updateWine(id, { quantity: wine.quantity - 1 });
+                } else {
+                    setWines(wines.filter(w => w.id !== id));
+                }
+                setSelectedWine(null);
+            };
+
+            const tintos = wines.filter(w => w.type === 'Tinto');
+            const brancos = wines.filter(w => w.type === 'Branco');
+            const roses = wines.filter(w => w.type === 'Rosé');
+
+            if (editingWine) {
+                return (
+                    <div className="view">
+                        <h2>Editar vinho</h2>
+                        <div className="form-group">
+                            <label>Nome</label>
+                            <input type="text" value={editingWine.name || ''} onChange={e => setEditingWine({...editingWine, name: e.target.value})} />
+                        </div>
+                        <div className="form-row">
+                            <div className="form-group">
+                                <label>Ano</label>
+                                <input type="text" value={editingWine.year || ''} onChange={e => setEditingWine({...editingWine, year: e.target.value})} />
+                            </div>
+                            <div className="form-group">
+                                <label>Tipo</label>
+                                <select value={editingWine.type || 'Tinto'} onChange={e => setEditingWine({...editingWine, type: e.target.value})}>
+                                    <option>Tinto</option>
+                                    <option>Branco</option>
+                                    <option>Rosé</option>
+                                </select>
+                            </div>
+                        </div>
+                        <div className="form-group">
+                            <label>Região</label>
+                            <input type="text" value={editingWine.region || ''} onChange={e => setEditingWine({...editingWine, region: e.target.value})} />
+                        </div>
+                        <div className="form-group">
+                            <label>Castas</label>
+                            <input type="text" value={editingWine.grapes || ''} onChange={e => setEditingWine({...editingWine, grapes: e.target.value})} />
+                        </div>
+                        <div className="form-group">
+                            <label>Temperatura (°C)</label>
+                            <input type="text" value={editingWine.temperature || ''} onChange={e => setEditingWine({...editingWine, temperature: e.target.value})} placeholder="ex: 14-16°C" />
+                        </div>
+                        <div className="form-group">
+                            <label>Emparelhamento com comida</label>
+                            <textarea value={editingWine.pairings || ''} onChange={e => setEditingWine({...editingWine, pairings: e.target.value})} />
+                        </div>
+                        <div className="form-group">
+                            <label>Quantidade</label>
+                            <input type="number" min="1" value={editingWine.quantity || 1} onChange={e => setEditingWine({...editingWine, quantity: parseInt(e.target.value) || 1})} />
+                        </div>
+                        <div className="form-group">
+                            <label>Ano de compra</label>
+                            <input type="number" min="2000" max={new Date().getFullYear()} value={editingWine.purchaseYear || ''} onChange={e => setEditingWine({...editingWine, purchaseYear: parseInt(e.target.value)})} />
+                        </div>
+                        <div className="form-group">
+                            <label>Minha avaliação (1-5)</label>
+                            <input type="number" min="1" max="5" value={editingWine.myRating || ''} onChange={e => setEditingWine({...editingWine, myRating: parseInt(e.target.value) || 0})} />
+                        </div>
+                        <div className="form-group">
+                            <label>Observações</label>
+                            <textarea value={editingWine.notes || ''} onChange={e => setEditingWine({...editingWine, notes: e.target.value})} />
+                        </div>
+                        <div className="button-row">
+                            <button className="btn btn-secondary" onClick={() => setEditingWine(null)}>Cancelar</button>
+                            <button className="btn btn-primary" onClick={() => updateWine(editingWine.id, editingWine)}>Guardar</button>
+                        </div>
+                    </div>
+                );
+            }
+
+            if (selectedWine) {
+                return (
+                    <div className="view">
+                        <button className="btn-back" onClick={() => setSelectedWine(null)}>← Voltar</button>
+                        <div className="wine-card">
+                            <h2>{selectedWine.name}</h2>
+                            <p style={{fontSize: '13px', color: '#666', marginBottom: '1rem'}}>{selectedWine.region} · {selectedWine.year}</p>
+                            {selectedWine.temperature && <p><strong>Temperatura:</strong> {selectedWine.temperature}°C</p>}
+                            {selectedWine.pairings && <p><strong>Emparelhamentos:</strong> {selectedWine.pairings}</p>}
+                            {selectedWine.myRating > 0 && <p><strong>Minha avaliação:</strong> {'⭐'.repeat(selectedWine.myRating)}</p>}
+                            {selectedWine.notes && <p><strong>Observações:</strong> {selectedWine.notes}</p>}
+                        </div>
+                        <div className="button-row">
+                            <button className="btn btn-secondary" onClick={() => setEditingWine(selectedWine)}>Editar</button>
+                            <button className="btn btn-danger" onClick={() => markAsDrunk(selectedWine.id)}>Marcar como bebido</button>
+                        </div>
+                    </div>
+                );
+            }
+
+            if (currentView === 'add') {
+                return (
+                    <div className="view">
+                        <button className="btn-back" onClick={() => setCurrentView('cellar')}>← Voltar</button>
+                        <h2>Adicionar vinho</h2>
+                        <div className="form-group">
+                            <label>Nome do vinho *</label>
+                            <input type="text" value={newWine?.name || ''} onChange={e => setNewWine({...(newWine || {}), name: e.target.value})} placeholder="ex: João Pires" />
+                        </div>
+                        <div className="form-row">
+                            <div className="form-group">
+                                <label>Ano</label>
+                                <input type="text" value={newWine?.year || ''} onChange={e => setNewWine({...(newWine || {}), year: e.target.value})} placeholder="ex: 2023" />
+                            </div>
+                            <div className="form-group">
+                                <label>Tipo</label>
+                                <select value={newWine?.type || 'Tinto'} onChange={e => setNewWine({...(newWine || {}), type: e.target.value})}>
+                                    <option>Tinto</option>
+                                    <option>Branco</option>
+                                    <option>Rosé</option>
+                                </select>
+                            </div>
+                        </div>
+                        <div className="form-group">
+                            <label>Região</label>
+                            <input type="text" value={newWine?.region || ''} onChange={e => setNewWine({...(newWine || {}), region: e.target.value})} placeholder="ex: Setúbal" />
+                        </div>
+                        <div className="form-group">
+                            <label>Quantidade</label>
+                            <input type="number" min="1" value={newWine?.quantity || 1} onChange={e => setNewWine({...(newWine || {}), quantity: parseInt(e.target.value) || 1})} />
+                        </div>
+                        <div className="form-group">
+                            <label>Ano de compra</label>
+                            <input type="number" min="2000" max={new Date().getFullYear()} value={newWine?.purchaseYear || new Date().getFullYear()} onChange={e => setNewWine({...(newWine || {}), purchaseYear: parseInt(e.target.value)})} />
+                        </div>
+                        <button className="btn btn-primary" onClick={addWineToStock}>Adicionar ao stock</button>
+                    </div>
+                );
+            }
+
+            return (
+                <div className="view">
+                    <h1>WineCard</h1>
+                    {wines.length > 0 ? (
+                        <>
+                            <div className="summary-grid">
+                                <div className="summary-card">
+                                    <p style={{color: '#666', fontSize: '12px'}}>Tintos</p>
+                                    <p className="summary-value">{tintos.length}</p>
+                                </div>
+                                <div className="summary-card">
+                                    <p style={{color: '#666', fontSize: '12px'}}>Brancos</p>
+                                    <p className="summary-value">{brancos.length}</p>
+                                </div>
+                                <div className="summary-card">
+                                    <p style={{color: '#666', fontSize: '12px'}}>Rosés</p>
+                                    <p className="summary-value">{roses.length}</p>
+                                </div>
+                            </div>
+                            <div style={{flex: 1, overflowY: 'auto', marginBottom: '1rem'}}>
+                                {wines.map(wine => (
+                                    <div key={wine.id} className="wine-item" onClick={() => setSelectedWine(wine)}>
+                                        <div>
+                                            <p className="wine-name">{wine.name}</p>
+                                            <p style={{fontSize: '12px', color: '#666'}}>{wine.region} · {wine.year}</p>
+                                            <p style={{fontSize: '12px', color: '#999'}}>Qtd: {wine.quantity} | Compra: {wine.purchaseYear}</p>
+                                        </div>
+                                        <span className="wine-type">{wine.type}</span>
+                                    </div>
+                                ))}
+                            </div>
+                        </>
+                    ) : (
+                        <div className="empty-state">
+                            <p>Nenhum vinho no stock ainda</p>
+                        </div>
+                    )}
+                    <button className="btn btn-primary" onClick={() => setNewWine({type: 'Tinto', quantity: 1, purchaseYear: new Date().getFullYear()}) || setCurrentView('add')}>+ Adicionar vinho</button>
+                </div>
+            );
+        }
+
+        ReactDOM.render(<WineCard />, document.getElementById('root'));
+    </script>
+</body>
+</html>
