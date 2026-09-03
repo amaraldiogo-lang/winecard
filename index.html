@@ -4,6 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>WineCard - Gestão de Garrafeira</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/tesseract.js/5.0.4/tesseract.min.js"></script>
     <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
     <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
@@ -85,6 +86,7 @@
     <div id="root"></div>
     <script type="text/babel">
         const { useState, useEffect, useRef } = React;
+        const Tesseract = window.Tesseract;
 
         function WineCard() {
             const [wines, setWines] = useState([]);
@@ -126,7 +128,7 @@
                 if (canvasRef.current && videoRef.current) {
                     const ctx = canvasRef.current.getContext('2d');
                     ctx.drawImage(videoRef.current, 0, 0);
-                    const imageData = canvasRef.current.toDataURL('image/jpeg', 0.9);
+                    const imageData = canvasRef.current.toDataURL('image/jpeg', 0.95);
                     setCapturedImage(imageData);
                     setCameraActive(false);
                     if (videoRef.current.srcObject) {
@@ -153,36 +155,106 @@
 
             const performOCR = async (imageData) => {
                 setOcrLoading(true);
-                setOcrText('🔍 A processar rótulo...');
+                setOcrText('🔍 A ler rótulo (30-60 segundos)...');
                 
                 try {
-                    const response = await fetch('/api/analyze-wine', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ image: imageData })
-                    });
-
-                    const result = await response.json();
-
-                    if (result.success && result.wineData) {
-                        setNewWine(prev => ({
-                            ...prev,
-                            name: result.wineData.name || prev.name,
-                            year: result.wineData.year || prev.year,
-                            region: result.wineData.region || prev.region,
-                            type: result.wineData.type || prev.type
-                        }));
-                        
-                        if (result.wineData.name && result.wineData.year) {
-                            setOcrText(`✅ Detectado: ${result.wineData.name} (${result.wineData.year})`);
-                        } else if (result.wineData.name) {
-                            setOcrText(`⚠️ Detectei: "${result.wineData.name}" - adiciona o ano`);
-                        } else {
-                            setOcrText('⚠️ Detecção fraca - preenche os dados manualmente');
+                    console.log('Starting OCR with Tesseract...');
+                    
+                    // Cria worker para não bloquear UI
+                    const result = await Tesseract.recognize(
+                        imageData,
+                        'por+eng',
+                        {
+                            logger: (m) => console.log('Tesseract:', m.status, Math.round(m.progress * 100) + '%')
                         }
-                    } else {
-                        setOcrText('❌ Não consegui ler a imagem. Tenta outra foto ou preenche manualmente.');
+                    );
+
+                    const ocrData = result.data.text;
+                    console.log('OCR raw text:', ocrData.substring(0, 300));
+
+                    if (!ocrData || ocrData.trim().length < 5) {
+                        setOcrText('❌ Não consegui ler o rótulo. Preenche manualmente.');
+                        setOcrLoading(false);
+                        return;
                     }
+
+                    // Parse do texto
+                    const lines = ocrData.split('\n').filter(l => l.trim().length > 1);
+                    const wineData = {
+                        name: '',
+                        year: null,
+                        region: '',
+                        type: 'Tinto'
+                    };
+
+                    // Extrai ano (padrão: 1900-2099)
+                    for (const line of lines) {
+                        const yearMatch = line.match(/\b(19|20)\d{2}\b/);
+                        if (yearMatch) {
+                            wineData.year = parseInt(yearMatch[0]);
+                            console.log('Found year:', wineData.year);
+                            break;
+                        }
+                    }
+
+                    // Procura nome - linha com mais caracteres e sem números (geralmente a primeira)
+                    let longestLine = '';
+                    for (const line of lines) {
+                        const trimmed = line.trim();
+                        if (trimmed.length > 3 && trimmed.length < 100 && trimmed.length > longestLine.length) {
+                            // Ignora linhas com muitos números
+                            const digitRatio = (trimmed.match(/\d/g) || []).length / trimmed.length;
+                            if (digitRatio < 0.4) {
+                                longestLine = trimmed;
+                            }
+                        }
+                    }
+                    if (longestLine) {
+                        wineData.name = longestLine;
+                        console.log('Found name:', wineData.name);
+                    }
+
+                    // Detecta tipo
+                    const textLower = ocrData.toLowerCase();
+                    if (textLower.includes('branco') || textLower.includes('white') || textLower.includes('blanco')) {
+                        wineData.type = 'Branco';
+                    } else if (textLower.includes('rosé') || textLower.includes('rosado') || textLower.includes('rose')) {
+                        wineData.type = 'Rosé';
+                    }
+
+                    // Detecta região
+                    if (textLower.includes('douro')) {
+                        wineData.region = 'Douro';
+                    } else if (textLower.includes('setúbal') || textLower.includes('setubal')) {
+                        wineData.region = 'Setúbal';
+                    } else if (textLower.includes('alentejo')) {
+                        wineData.region = 'Alentejo';
+                    } else if (textLower.includes('dão') || textLower.includes('dao')) {
+                        wineData.region = 'Dão';
+                    } else if (textLower.includes('bairrada')) {
+                        wineData.region = 'Bairrada';
+                    }
+
+                    console.log('Wine data:', wineData);
+
+                    // Preenche o formulário
+                    setNewWine(prev => ({
+                        ...prev,
+                        name: wineData.name || prev.name,
+                        year: wineData.year || prev.year,
+                        region: wineData.region || prev.region,
+                        type: wineData.type || prev.type
+                    }));
+
+                    // Mensagem de sucesso
+                    if (wineData.name && wineData.year) {
+                        setOcrText(`✅ Detectado: ${wineData.name} (${wineData.year})`);
+                    } else if (wineData.name) {
+                        setOcrText(`⚠️ Detectei o nome, mas falta o ano`);
+                    } else {
+                        setOcrText('⚠️ Detecção parcial - completa os dados');
+                    }
+
                 } catch (err) {
                     console.error('OCR error:', err);
                     setOcrText('❌ Erro ao processar. Tenta novamente ou preenche manualmente.');
