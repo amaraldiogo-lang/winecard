@@ -1,105 +1,67 @@
-import vision from '@google-cloud/vision';
-
 export default async function handler(req, res) {
   if (req.method !== 'POST') {
     return res.status(405).json({ error: 'Method not allowed' });
   }
 
-  const { image } = req.body;
+  const { ocrText } = req.body;
 
-  if (!image) {
-    return res.status(400).json({ error: 'No image provided' });
+  if (!ocrText) {
+    return res.status(400).json({ error: 'No OCR text provided' });
   }
 
   try {
-    // Parse credenciais
-    let credentials;
-    try {
-      credentials = JSON.parse(process.env.GOOGLE_APPLICATION_CREDENTIALS);
-    } catch (parseError) {
-      return res.status(500).json({
-        success: false,
-        error: 'Invalid credentials format: ' + parseError.message
-      });
-    }
+    const response = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-api-key': process.env.ANTHROPIC_API_KEY,
+        'anthropic-version': '2023-06-01'
+      },
+      body: JSON.stringify({
+        model: 'claude-opus-4-1',
+        max_tokens: 500,
+        messages: [
+          {
+            role: 'user',
+            content: `Lê este texto extraído de um rótulo de vinho português.
+Extrai APENAS a seguinte informação (se existir):
+- Castas (variedades de uva): 
+- Temperatura de serviço (ex: 14-16°C):
+- Emparelhamento com comida (recomendações):
+- Potencial de guarda (até que ano):
 
-    // Cria cliente com credenciais
-    const client = new vision.ImageAnnotatorClient({
-      credentials: credentials
+Se a informação não existir, deixa em branco.
+
+Responde APENAS em JSON, sem texto extra:
+{
+  "castas": "",
+  "temperatura": "",
+  "emparelhamento": "",
+  "guarda": ""
+}
+
+Texto do rótulo:
+${ocrText}`
+          }
+        ]
+      })
     });
 
-    // Remove prefixo base64
-    const base64Data = image.split(',')[1] || image;
-
-    const request = {
-      image: { content: base64Data },
-      features: [{ type: 'TEXT_DETECTION' }],
-    };
-
-    const [result] = await client.annotateImage(request);
-    const ocrText = result.fullTextAnnotation?.text || '';
-
-    if (!ocrText || ocrText.trim().length < 5) {
-      return res.status(200).json({
-        success: false,
-        message: 'Não consegui ler o rótulo'
-      });
-    }
-
-    const lines = ocrText.split('\n').filter(l => l.trim().length > 1);
-    const wineData = {
-      name: '',
-      year: null,
-      region: '',
-      type: 'Tinto'
-    };
-
-    // Ano
-    for (const line of lines) {
-      const yearMatch = line.match(/\b(19|20)\d{2}\b/);
-      if (yearMatch) {
-        wineData.year = parseInt(yearMatch[0]);
-        break;
-      }
-    }
-
-    // Nome
-    for (const line of lines) {
-      const trimmed = line.trim();
-      if (trimmed.length > 3 && trimmed.length < 80 && !/^\d+$/.test(trimmed)) {
-        wineData.name = trimmed;
-        break;
-      }
-    }
-
-    // Tipo
-    const textLower = ocrText.toLowerCase();
-    if (textLower.includes('branco')) {
-      wineData.type = 'Branco';
-    } else if (textLower.includes('rosé') || textLower.includes('rosado')) {
-      wineData.type = 'Rosé';
-    }
-
-    // Região
-    if (textLower.includes('douro')) {
-      wineData.region = 'Douro';
-    } else if (textLower.includes('setúbal')) {
-      wineData.region = 'Setúbal';
-    } else if (textLower.includes('alentejo')) {
-      wineData.region = 'Alentejo';
-    }
+    const data = await response.json();
+    const claudeResponse = data.content[0].text;
+    const jsonMatch = claudeResponse.match(/\{[\s\S]*\}/);
+    const wineDetails = jsonMatch ? JSON.parse(jsonMatch[0]) : {};
 
     return res.status(200).json({
       success: true,
-      wineData: wineData,
-      ocrText: ocrText
+      wineDetails: wineDetails
     });
 
   } catch (error) {
-    console.error('Vision API Error:', error);
+    console.error('Claude API Error:', error);
     return res.status(500).json({
       success: false,
-      error: error.message || 'Unknown error'
+      error: error.message
     });
   }
 }
