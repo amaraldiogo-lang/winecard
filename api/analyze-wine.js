@@ -12,10 +12,23 @@ export default async function handler(req, res) {
   }
 
   try {
-    const credentials = JSON.parse(process.env.GOOGLE_APPLICATION_CREDENTIALS);
-    const client = new vision.ImageAnnotatorClient({ credentials });
+    // Parse credenciais
+    let credentials;
+    try {
+      credentials = JSON.parse(process.env.GOOGLE_APPLICATION_CREDENTIALS);
+    } catch (parseError) {
+      return res.status(500).json({
+        success: false,
+        error: 'Invalid credentials format: ' + parseError.message
+      });
+    }
 
-    // Remove o prefixo base64
+    // Cria cliente com credenciais
+    const client = new vision.ImageAnnotatorClient({
+      credentials: credentials
+    });
+
+    // Remove prefixo base64
     const base64Data = image.split(',')[1] || image;
 
     const request = {
@@ -33,7 +46,6 @@ export default async function handler(req, res) {
       });
     }
 
-    // Parse
     const lines = ocrText.split('\n').filter(l => l.trim().length > 1);
     const wineData = {
       name: '',
@@ -51,10 +63,10 @@ export default async function handler(req, res) {
       }
     }
 
-    // Nome - primeira linha legível
+    // Nome
     for (const line of lines) {
       const trimmed = line.trim();
-      if (trimmed.length > 3 && trimmed.length < 80) {
+      if (trimmed.length > 3 && trimmed.length < 80 && !/^\d+$/.test(trimmed)) {
         wineData.name = trimmed;
         break;
       }
@@ -83,10 +95,10 @@ export default async function handler(req, res) {
     });
 
   } catch (error) {
-    console.error('Error:', error.message);
+    console.error('Vision API Error:', error);
     return res.status(500).json({
       success: false,
-      error: error.message
+      error: error.message || 'Unknown error'
     });
   }
 }
