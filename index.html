@@ -4,7 +4,6 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>WineCard - Gestão de Garrafeira</title>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/tesseract.js/5.0.4/tesseract.min.js"></script>
     <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
     <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
@@ -69,15 +68,6 @@
         
         .preview-image { width: 100%; border-radius: 8px; max-height: 200px; object-fit: cover; margin-bottom: 1rem; }
         
-        .alert { padding: 12px; border-radius: 6px; margin-bottom: 1rem; font-size: 13px; }
-        .alert-info { background: #e6f1fb; color: #185fa5; border: 0.5px solid #b5d4f4; }
-        .alert-success { background: #e8f5e9; color: #2e7d32; border: 0.5px solid #c8e6c9; }
-        .alert-error { background: #fce0e0; color: #e24b4a; border: 0.5px solid #f5b5b5; }
-        
-        .loading { display: flex; align-items: center; justify-content: center; gap: 8px; color: #666; font-size: 14px; }
-        .spinner { width: 16px; height: 16px; border: 2px solid #e0e0e0; border-top-color: #378add; border-radius: 50%; animation: spin 0.6s linear infinite; }
-        @keyframes spin { to { transform: rotate(360deg); } }
-        
         canvas { display: none; }
         input[type="file"] { display: none; }
     </style>
@@ -86,7 +76,6 @@
     <div id="root"></div>
     <script type="text/babel">
         const { useState, useEffect, useRef } = React;
-        const Tesseract = window.Tesseract;
 
         function WineCard() {
             const [wines, setWines] = useState([]);
@@ -96,8 +85,6 @@
             const [newWine, setNewWine] = useState(null);
             const [cameraActive, setCameraActive] = useState(false);
             const [capturedImage, setCapturedImage] = useState(null);
-            const [ocrText, setOcrText] = useState('');
-            const [ocrLoading, setOcrLoading] = useState(false);
             const [filterType, setFilterType] = useState('all');
             const videoRef = useRef(null);
             const canvasRef = useRef(null);
@@ -128,142 +115,16 @@
                 if (canvasRef.current && videoRef.current) {
                     const ctx = canvasRef.current.getContext('2d');
                     ctx.drawImage(videoRef.current, 0, 0);
-                    const imageData = canvasRef.current.toDataURL('image/jpeg', 0.95);
+                    const imageData = canvasRef.current.toDataURL('image/jpeg', 0.9);
                     setCapturedImage(imageData);
                     setCameraActive(false);
                     if (videoRef.current.srcObject) {
                         videoRef.current.srcObject.getTracks().forEach(t => t.stop());
                     }
-                    setNewWine({
-                        name: '',
-                        year: new Date().getFullYear(),
-                        region: '',
-                        type: 'Tinto',
-                        grapes: '',
-                        temperature: '',
-                        pairings: '',
-                        aging: '',
-                        vivinoRating: '',
-                        myRating: 0,
-                        notes: '',
-                        quantity: 1,
-                        purchaseYear: new Date().getFullYear()
-                    });
-                    performOCR(imageData);
                 }
             };
 
-            const performOCR = async (imageData) => {
-                setOcrLoading(true);
-                setOcrText('🔍 A ler rótulo (30-60 segundos)...');
-                
-                try {
-                    console.log('Starting OCR with Tesseract...');
-                    
-                    // Cria worker para não bloquear UI
-                    const result = await Tesseract.recognize(
-                        imageData,
-                        'por+eng',
-                        {
-                            logger: (m) => console.log('Tesseract:', m.status, Math.round(m.progress * 100) + '%')
-                        }
-                    );
-
-                    const ocrData = result.data.text;
-                    console.log('OCR raw text:', ocrData.substring(0, 300));
-
-                    if (!ocrData || ocrData.trim().length < 5) {
-                        setOcrText('❌ Não consegui ler o rótulo. Preenche manualmente.');
-                        setOcrLoading(false);
-                        return;
-                    }
-
-                    // Parse do texto
-                    const lines = ocrData.split('\n').filter(l => l.trim().length > 1);
-                    const wineData = {
-                        name: '',
-                        year: null,
-                        region: '',
-                        type: 'Tinto'
-                    };
-
-                    // Extrai ano (padrão: 1900-2099)
-                    for (const line of lines) {
-                        const yearMatch = line.match(/\b(19|20)\d{2}\b/);
-                        if (yearMatch) {
-                            wineData.year = parseInt(yearMatch[0]);
-                            console.log('Found year:', wineData.year);
-                            break;
-                        }
-                    }
-
-                    // Procura nome - linha com mais caracteres e sem números (geralmente a primeira)
-                    let longestLine = '';
-                    for (const line of lines) {
-                        const trimmed = line.trim();
-                        if (trimmed.length > 3 && trimmed.length < 100 && trimmed.length > longestLine.length) {
-                            // Ignora linhas com muitos números
-                            const digitRatio = (trimmed.match(/\d/g) || []).length / trimmed.length;
-                            if (digitRatio < 0.4) {
-                                longestLine = trimmed;
-                            }
-                        }
-                    }
-                    if (longestLine) {
-                        wineData.name = longestLine;
-                        console.log('Found name:', wineData.name);
-                    }
-
-                    // Detecta tipo
-                    const textLower = ocrData.toLowerCase();
-                    if (textLower.includes('branco') || textLower.includes('white') || textLower.includes('blanco')) {
-                        wineData.type = 'Branco';
-                    } else if (textLower.includes('rosé') || textLower.includes('rosado') || textLower.includes('rose')) {
-                        wineData.type = 'Rosé';
-                    }
-
-                    // Detecta região
-                    if (textLower.includes('douro')) {
-                        wineData.region = 'Douro';
-                    } else if (textLower.includes('setúbal') || textLower.includes('setubal')) {
-                        wineData.region = 'Setúbal';
-                    } else if (textLower.includes('alentejo')) {
-                        wineData.region = 'Alentejo';
-                    } else if (textLower.includes('dão') || textLower.includes('dao')) {
-                        wineData.region = 'Dão';
-                    } else if (textLower.includes('bairrada')) {
-                        wineData.region = 'Bairrada';
-                    }
-
-                    console.log('Wine data:', wineData);
-
-                    // Preenche o formulário
-                    setNewWine(prev => ({
-                        ...prev,
-                        name: wineData.name || prev.name,
-                        year: wineData.year || prev.year,
-                        region: wineData.region || prev.region,
-                        type: wineData.type || prev.type
-                    }));
-
-                    // Mensagem de sucesso
-                    if (wineData.name && wineData.year) {
-                        setOcrText(`✅ Detectado: ${wineData.name} (${wineData.year})`);
-                    } else if (wineData.name) {
-                        setOcrText(`⚠️ Detectei o nome, mas falta o ano`);
-                    } else {
-                        setOcrText('⚠️ Detecção parcial - completa os dados');
-                    }
-
-                } catch (err) {
-                    console.error('OCR error:', err);
-                    setOcrText('❌ Erro ao processar. Tenta novamente ou preenche manualmente.');
-                }
-                
-                setOcrLoading(false);
-            };
-
-            const startNewWine = () => {
+            const startNewWine = (withPhoto = false) => {
                 setNewWine({
                     name: '',
                     year: new Date().getFullYear(),
@@ -279,6 +140,9 @@
                     quantity: 1,
                     purchaseYear: new Date().getFullYear()
                 });
+                if (!withPhoto) {
+                    setCapturedImage(null);
+                }
                 setView('add');
             };
 
@@ -290,6 +154,7 @@
                 const wine = {
                     id: Date.now(),
                     ...newWine,
+                    photo: capturedImage,
                     dateAdded: new Date().toISOString()
                 };
                 setWines([wine, ...wines]);
@@ -315,7 +180,6 @@
             const resetForm = () => {
                 setNewWine(null);
                 setCapturedImage(null);
-                setOcrText('');
                 setView('cellar');
             };
 
@@ -336,6 +200,12 @@
                             <button className="btn btn-secondary" onClick={() => { setCameraActive(false); if (videoRef.current?.srcObject) videoRef.current.srcObject.getTracks().forEach(t => t.stop()); }}>Cancelar</button>
                             <button className="btn btn-primary" onClick={capturePhoto}>Fotografar</button>
                         </div>
+                        {capturedImage && (
+                            <div className="button-row">
+                                <button className="btn btn-secondary" onClick={() => setCapturedImage(null)}>Tirar outra</button>
+                                <button className="btn btn-primary" onClick={() => startNewWine(true)}>Continuar com esta</button>
+                            </div>
+                        )}
                     </div>
                 );
             }
@@ -347,6 +217,8 @@
                         <button className="back-btn" onClick={() => setEditingWine(null)}>← Voltar</button>
                         <h2>Editar vinho</h2>
                         
+                        {editingWine.photo && <img src={editingWine.photo} className="preview-image" />}
+
                         <div className="form-group">
                             <label>Nome do vinho *</label>
                             <input type="text" value={editingWine.name || ''} onChange={e => setEditingWine({...editingWine, name: e.target.value})} />
@@ -369,12 +241,12 @@
 
                         <div className="form-group">
                             <label>Região</label>
-                            <input type="text" value={editingWine.region || ''} onChange={e => setEditingWine({...editingWine, region: e.target.value})} placeholder="ex: Setúbal" />
+                            <input type="text" value={editingWine.region || ''} onChange={e => setEditingWine({...editingWine, region: e.target.value})} placeholder="ex: Douro, Setúbal" />
                         </div>
 
                         <div className="form-group">
                             <label>Castas</label>
-                            <input type="text" value={editingWine.grapes || ''} onChange={e => setEditingWine({...editingWine, grapes: e.target.value})} />
+                            <input type="text" value={editingWine.grapes || ''} onChange={e => setEditingWine({...editingWine, grapes: e.target.value})} placeholder="ex: Touriga Nacional, Tinta Barroca" />
                         </div>
 
                         <div className="form-group">
@@ -384,12 +256,12 @@
 
                         <div className="form-group">
                             <label>Emparelhamento com comida</label>
-                            <textarea value={editingWine.pairings || ''} onChange={e => setEditingWine({...editingWine, pairings: e.target.value})} style={{minHeight: '60px'}} />
+                            <textarea value={editingWine.pairings || ''} onChange={e => setEditingWine({...editingWine, pairings: e.target.value})} style={{minHeight: '60px'}} placeholder="ex: Carnes vermelhas, queijos duros" />
                         </div>
 
                         <div className="form-group">
                             <label>Potencial de guarda</label>
-                            <input type="text" value={editingWine.aging || ''} onChange={e => setEditingWine({...editingWine, aging: e.target.value})} placeholder="ex: Até 2030" />
+                            <input type="text" value={editingWine.aging || ''} onChange={e => setEditingWine({...editingWine, aging: e.target.value})} placeholder="ex: Pronto para beber ou Até 2030" />
                         </div>
 
                         <div className="form-group">
@@ -436,6 +308,8 @@
                     <div className="view">
                         <button className="back-btn" onClick={() => setSelectedWine(null)}>← Voltar</button>
                         
+                        {selectedWine.photo && <img src={selectedWine.photo} className="preview-image" />}
+
                         <div className="wine-card">
                             <h2>{selectedWine.name}</h2>
                             <p style={{margin: '0 0 1rem 0', fontSize: '13px', color: '#666'}}>{selectedWine.region && selectedWine.region + ' · '}{selectedWine.year}</p>
@@ -499,8 +373,8 @@
 
                         {!capturedImage && !newWine && (
                             <>
-                                <p style={{marginBottom: '1rem', color: '#666', fontSize: '14px'}}>Fotografa o rótulo ou faz upload</p>
-                                <button className="btn btn-primary btn-full" onClick={startCamera}>📷 Fotografar</button>
+                                <p style={{marginBottom: '1rem', color: '#666', fontSize: '14px'}}>Começa por fotografar o rótulo (opcional)</p>
+                                <button className="btn btn-primary btn-full" onClick={startCamera}>📷 Fotografar rótulo</button>
                                 <button className="btn btn-secondary btn-full" onClick={() => fileInputRef.current?.click()}>📁 Upload foto</button>
                                 <input ref={fileInputRef} type="file" accept="image/*" onChange={e => {
                                     const file = e.target.files?.[0];
@@ -508,59 +382,29 @@
                                         const reader = new FileReader();
                                         reader.onload = (evt) => {
                                             setCapturedImage(evt.target?.result);
-                                            setNewWine({
-                                                name: '',
-                                                year: new Date().getFullYear(),
-                                                region: '',
-                                                type: 'Tinto',
-                                                grapes: '',
-                                                temperature: '',
-                                                pairings: '',
-                                                aging: '',
-                                                vivinoRating: '',
-                                                myRating: 0,
-                                                notes: '',
-                                                quantity: 1,
-                                                purchaseYear: new Date().getFullYear()
-                                            });
-                                            performOCR(evt.target?.result);
+                                            startNewWine(true);
                                         };
                                         reader.readAsDataURL(file);
                                     }
                                 }} />
-                                <p style={{marginTop: '2rem', fontSize: '13px', color: '#999', textAlign: 'center'}}>Ou preenche manualmente</p>
-                                <button className="btn btn-secondary btn-full" onClick={startNewWine}>✏️ Preencher à mão</button>
+                                <p style={{marginTop: '2rem', fontSize: '13px', color: '#999', textAlign: 'center'}}>Ou preenche sem foto</p>
+                                <button className="btn btn-secondary btn-full" onClick={() => startNewWine(false)}>✏️ Preencher à mão</button>
                             </>
                         )}
 
-                        {capturedImage && newWine && (
+                        {newWine && (
                             <>
-                                <img src={capturedImage} className="preview-image" />
-
-                                {ocrLoading && (
-                                    <div className="alert alert-info">
-                                        <div className="loading">
-                                            <div className="spinner"></div>
-                                            {ocrText}
-                                        </div>
-                                    </div>
-                                )}
-                                
-                                {ocrText && !ocrLoading && (
-                                    <div className={`alert ${ocrText.includes('✅') ? 'alert-success' : ocrText.includes('⚠️') ? 'alert-info' : 'alert-error'}`}>
-                                        {ocrText}
-                                    </div>
-                                )}
+                                {capturedImage && <img src={capturedImage} className="preview-image" />}
 
                                 <div className="form-group">
                                     <label>Nome do vinho *</label>
-                                    <input type="text" value={newWine.name || ''} onChange={e => setNewWine({...newWine, name: e.target.value})} placeholder="ex: João Pires" autoFocus />
+                                    <input type="text" value={newWine.name || ''} onChange={e => setNewWine({...newWine, name: e.target.value})} placeholder="ex: Monte Meão, João Pires" autoFocus />
                                 </div>
 
                                 <div className="form-row">
                                     <div className="form-group">
                                         <label>Ano</label>
-                                        <input type="number" value={newWine.year || ''} onChange={e => setNewWine({...newWine, year: e.target.value})} />
+                                        <input type="number" value={newWine.year || ''} onChange={e => setNewWine({...newWine, year: e.target.value})} placeholder="2014" />
                                     </div>
                                     <div className="form-group">
                                         <label>Tipo</label>
@@ -574,36 +418,36 @@
 
                                 <div className="form-group">
                                     <label>Região</label>
-                                    <input type="text" value={newWine.region || ''} onChange={e => setNewWine({...newWine, region: e.target.value})} placeholder="ex: Setúbal" />
+                                    <input type="text" value={newWine.region || ''} onChange={e => setNewWine({...newWine, region: e.target.value})} placeholder="ex: Douro, Setúbal, Alentejo" />
                                 </div>
 
                                 <div className="form-group">
-                                    <label>Castas</label>
-                                    <input type="text" value={newWine.grapes || ''} onChange={e => setNewWine({...newWine, grapes: e.target.value})} />
+                                    <label>Castas (opcional)</label>
+                                    <input type="text" value={newWine.grapes || ''} onChange={e => setNewWine({...newWine, grapes: e.target.value})} placeholder="ex: Touriga Nacional" />
                                 </div>
 
                                 <div className="form-group">
-                                    <label>Temperatura (°C)</label>
-                                    <input type="text" value={newWine.temperature || ''} onChange={e => setNewWine({...newWine, temperature: e.target.value})} placeholder="ex: 14-16" />
+                                    <label>Temperatura (opcional)</label>
+                                    <input type="text" value={newWine.temperature || ''} onChange={e => setNewWine({...newWine, temperature: e.target.value})} placeholder="ex: 14-16°C" />
                                 </div>
 
                                 <div className="form-group">
-                                    <label>Emparelhamento com comida</label>
-                                    <textarea value={newWine.pairings || ''} onChange={e => setNewWine({...newWine, pairings: e.target.value})} style={{minHeight: '60px'}} placeholder="ex: Carnes vermelhas, queijos duros" />
+                                    <label>Emparelhamento (opcional)</label>
+                                    <textarea value={newWine.pairings || ''} onChange={e => setNewWine({...newWine, pairings: e.target.value})} style={{minHeight: '50px'}} placeholder="ex: Carnes, queijos duros" />
                                 </div>
 
                                 <div className="form-group">
-                                    <label>Potencial de guarda</label>
-                                    <input type="text" value={newWine.aging || ''} onChange={e => setNewWine({...newWine, aging: e.target.value})} placeholder="ex: Pronto para beber ou Até 2030" />
+                                    <label>Potencial de guarda (opcional)</label>
+                                    <input type="text" value={newWine.aging || ''} onChange={e => setNewWine({...newWine, aging: e.target.value})} placeholder="ex: Até 2030" />
                                 </div>
 
                                 <div className="form-group">
-                                    <label>Avaliação Vivino</label>
-                                    <input type="number" step="0.1" min="0" max="5" value={newWine.vivinoRating || ''} onChange={e => setNewWine({...newWine, vivinoRating: e.target.value})} placeholder="ex: 3.8" />
+                                    <label>Avaliação Vivino (opcional)</label>
+                                    <input type="number" step="0.1" min="0" max="5" value={newWine.vivinoRating || ''} onChange={e => setNewWine({...newWine, vivinoRating: e.target.value})} placeholder="3.8" />
                                 </div>
 
                                 <div className="form-group">
-                                    <label>Minha avaliação</label>
+                                    <label>Minha avaliação (opcional)</label>
                                     <div className="star-rating">
                                         {[1,2,3,4,5].map(i => (
                                             <span key={i} className={`star ${i <= (newWine.myRating || 0) ? 'active' : ''}`} onClick={() => setNewWine({...newWine, myRating: i})}>⭐</span>
@@ -612,8 +456,8 @@
                                 </div>
 
                                 <div className="form-group">
-                                    <label>Observações pessoais</label>
-                                    <textarea value={newWine.notes || ''} onChange={e => setNewWine({...newWine, notes: e.target.value})} style={{minHeight: '60px'}} />
+                                    <label>Observações (opcional)</label>
+                                    <textarea value={newWine.notes || ''} onChange={e => setNewWine({...newWine, notes: e.target.value})} style={{minHeight: '50px'}} placeholder="Notas pessoais, sabor, experiência..." />
                                 </div>
 
                                 <div className="form-group">
@@ -622,7 +466,7 @@
                                 </div>
 
                                 <div className="button-row">
-                                    <button className="btn btn-secondary" onClick={() => {setCapturedImage(null); setNewWine(null);}}>Outra foto</button>
+                                    <button className="btn btn-secondary" onClick={() => {setCapturedImage(null); setNewWine(null);}}>Voltar</button>
                                     <button className="btn btn-primary" onClick={addWine}>Adicionar</button>
                                 </div>
                             </>
@@ -666,14 +510,15 @@
                                         <span className="wine-type">{wine.type}</span>
                                         <p className="wine-name">{wine.name}</p>
                                         <p className="wine-region">{wine.region && wine.region + ' · '}{wine.year}</p>
-                                        <p className="wine-meta">Qtd: {wine.quantity} | Compra: {wine.purchaseYear}</p>
+                                        <p className="wine-meta">Qtd: {wine.quantity}</p>
                                     </div>
                                 ))}
                             </div>
                         </>
                     ) : (
                         <div className="empty-state">
-                            <p>Nenhum vinho ainda</p>
+                            <p style={{marginBottom: '1rem', fontSize: '16px'}}>Nenhum vinho na garrafeira ainda</p>
+                            <p style={{fontSize: '13px', color: '#999'}}>Começa a adicionar os teus vinhos</p>
                         </div>
                     )}
 
