@@ -4,7 +4,6 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>WineCard - Gestão de Garrafeira</title>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/tesseract.js/4.1.1/tesseract.min.js"></script>
     <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
     <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
@@ -20,7 +19,6 @@
         .btn { padding: 12px 16px; border-radius: 8px; font-size: 14px; cursor: pointer; border: none; font-weight: 500; transition: all 0.2s; }
         .btn-primary { background: #378add; color: white; }
         .btn-primary:hover { background: #185fa5; }
-        .btn-primary:disabled { background: #ccc; cursor: not-allowed; }
         .btn-secondary { background: white; color: #1a1a1a; border: 0.5px solid #e0e0e0; }
         .btn-secondary:hover { background: #f5f5f5; }
         .btn-danger { background: #fce0e0; color: #e24b4a; border: 0.5px solid #f5b5b5; }
@@ -128,7 +126,7 @@
                 if (canvasRef.current && videoRef.current) {
                     const ctx = canvasRef.current.getContext('2d');
                     ctx.drawImage(videoRef.current, 0, 0);
-                    const imageData = canvasRef.current.toDataURL('image/jpeg');
+                    const imageData = canvasRef.current.toDataURL('image/jpeg', 0.9);
                     setCapturedImage(imageData);
                     setCameraActive(false);
                     if (videoRef.current.srcObject) {
@@ -155,88 +153,39 @@
 
             const performOCR = async (imageData) => {
                 setOcrLoading(true);
-                setOcrText('🔍 A ler rótulo (isto leva uns segundos)...');
+                setOcrText('🔍 A processar rótulo...');
                 
                 try {
-                    const result = await Tesseract.recognize(imageData, 'por+eng');
-                    const extractedText = result.data.text;
+                    const response = await fetch('/api/analyze-wine', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ image: imageData })
+                    });
 
-                    if (!extractedText || extractedText.trim().length < 3) {
-                        setOcrText('❌ Não consegui ler o rótulo. Preenche manualmente.');
-                        setOcrLoading(false);
-                        return;
-                    }
+                    const result = await response.json();
 
-                    // Parse do texto
-                    const lines = extractedText.split('\n').filter(l => l.trim().length > 2);
-                    const extractedData = {
-                        name: '',
-                        year: null,
-                        type: 'Tinto'
-                    };
-
-                    // Extrai ano
-                    for (const line of lines) {
-                        const yearMatch = line.match(/\b(19|20)\d{2}\b/);
-                        if (yearMatch) {
-                            extractedData.year = parseInt(yearMatch[0]);
-                            break;
-                        }
-                    }
-
-                    // Primeira linha é geralmente o nome
-                    if (lines.length > 0) {
-                        extractedData.name = lines[0].trim().substring(0, 60);
-                    }
-
-                    // Detecta tipo
-                    const textLower = extractedText.toLowerCase();
-                    if (textLower.includes('branco') || textLower.includes('white') || textLower.includes('blanco')) {
-                        extractedData.type = 'Branco';
-                    } else if (textLower.includes('rosé') || textLower.includes('rosado')) {
-                        extractedData.type = 'Rosé';
-                    }
-
-                    // Preenche o formulário
-                    setNewWine(prev => ({
-                        ...prev,
-                        name: extractedData.name || prev.name,
-                        year: extractedData.year || prev.year,
-                        type: extractedData.type || prev.type
-                    }));
-
-                    // Se tem nome e ano, busca no Vivino
-                    if (extractedData.name && extractedData.year) {
-                        setOcrText('🔍 A procurar no Vivino...');
+                    if (result.success && result.wineData) {
+                        setNewWine(prev => ({
+                            ...prev,
+                            name: result.wineData.name || prev.name,
+                            year: result.wineData.year || prev.year,
+                            region: result.wineData.region || prev.region,
+                            type: result.wineData.type || prev.type
+                        }));
                         
-                        try {
-                            const response = await fetch('/api/analyze-wine', {
-                                method: 'POST',
-                                headers: { 'Content-Type': 'application/json' },
-                                body: JSON.stringify({ ocrText: extractedText })
-                            });
-
-                            const result = await response.json();
-
-                            if (result.success && result.wineData.vivinoRating) {
-                                setNewWine(prev => ({
-                                    ...prev,
-                                    vivinoRating: result.wineData.vivinoRating
-                                }));
-                                setOcrText(`✅ Detectado: ${extractedData.name} (${extractedData.year}) - Rating: ${result.wineData.vivinoRating}/5`);
-                            } else {
-                                setOcrText(`✅ Detectado: ${extractedData.name} (${extractedData.year})`);
-                            }
-                        } catch (searchErr) {
-                            setOcrText(`✅ Detectado: ${extractedData.name} (${extractedData.year})`);
+                        if (result.wineData.name && result.wineData.year) {
+                            setOcrText(`✅ Detectado: ${result.wineData.name} (${result.wineData.year})`);
+                        } else if (result.wineData.name) {
+                            setOcrText(`⚠️ Detectei: "${result.wineData.name}" - adiciona o ano`);
+                        } else {
+                            setOcrText('⚠️ Detecção fraca - preenche os dados manualmente');
                         }
                     } else {
-                        setOcrText('⚠️ Detectei alguns dados, mas completa o formulário.');
+                        setOcrText('❌ Não consegui ler a imagem. Tenta outra foto ou preenche manualmente.');
                     }
-
                 } catch (err) {
                     console.error('OCR error:', err);
-                    setOcrText('❌ Erro ao processar imagem. Tenta novamente ou preenche manualmente.');
+                    setOcrText('❌ Erro ao processar. Tenta novamente ou preenche manualmente.');
                 }
                 
                 setOcrLoading(false);
@@ -526,7 +475,7 @@
                                 )}
                                 
                                 {ocrText && !ocrLoading && (
-                                    <div className={`alert ${ocrText.includes('✅') ? 'alert-success' : 'alert-error'}`}>
+                                    <div className={`alert ${ocrText.includes('✅') ? 'alert-success' : ocrText.includes('⚠️') ? 'alert-info' : 'alert-error'}`}>
                                         {ocrText}
                                     </div>
                                 )}
