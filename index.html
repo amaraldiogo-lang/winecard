@@ -68,6 +68,15 @@
         
         .preview-image { width: 100%; border-radius: 8px; max-height: 200px; object-fit: cover; margin-bottom: 1rem; }
         
+        .alert { padding: 12px; border-radius: 6px; margin-bottom: 1rem; font-size: 13px; }
+        .alert-info { background: #e6f1fb; color: #185fa5; border: 0.5px solid #b5d4f4; }
+        .alert-success { background: #e8f5e9; color: #2e7d32; border: 0.5px solid #c8e6c9; }
+        .alert-error { background: #fce0e0; color: #e24b4a; border: 0.5px solid #f5b5b5; }
+        
+        .loading { display: flex; align-items: center; justify-content: center; gap: 8px; color: #666; font-size: 14px; }
+        .spinner { width: 16px; height: 16px; border: 2px solid #e0e0e0; border-top-color: #378add; border-radius: 50%; animation: spin 0.6s linear infinite; }
+        @keyframes spin { to { transform: rotate(360deg); } }
+        
         canvas { display: none; }
         input[type="file"] { display: none; }
     </style>
@@ -85,6 +94,8 @@
             const [newWine, setNewWine] = useState(null);
             const [cameraActive, setCameraActive] = useState(false);
             const [capturedImage, setCapturedImage] = useState(null);
+            const [ocrText, setOcrText] = useState('');
+            const [ocrLoading, setOcrLoading] = useState(false);
             const [filterType, setFilterType] = useState('all');
             const videoRef = useRef(null);
             const canvasRef = useRef(null);
@@ -121,7 +132,63 @@
                     if (videoRef.current.srcObject) {
                         videoRef.current.srcObject.getTracks().forEach(t => t.stop());
                     }
+                    setNewWine({
+                        name: '',
+                        year: new Date().getFullYear(),
+                        region: '',
+                        type: 'Tinto',
+                        grapes: '',
+                        temperature: '',
+                        pairings: '',
+                        aging: '',
+                        vivinoRating: '',
+                        myRating: 0,
+                        notes: '',
+                        quantity: 1,
+                        purchaseYear: new Date().getFullYear()
+                    });
+                    performOCR(imageData);
                 }
+            };
+
+            const performOCR = async (imageData) => {
+                setOcrLoading(true);
+                setOcrText('🔍 A ler rótulo com Google Vision...');
+                
+                try {
+                    const response = await fetch('/api/analyze-wine', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ image: imageData })
+                    });
+
+                    const result = await response.json();
+
+                    if (result.success && result.wineData) {
+                        setNewWine(prev => ({
+                            ...prev,
+                            name: result.wineData.name || prev.name,
+                            year: result.wineData.year || prev.year,
+                            region: result.wineData.region || prev.region,
+                            type: result.wineData.type || prev.type
+                        }));
+                        
+                        if (result.wineData.name && result.wineData.year) {
+                            setOcrText(`✅ Detectado: ${result.wineData.name} (${result.wineData.year})`);
+                        } else if (result.wineData.name) {
+                            setOcrText(`⚠️ Detectei o nome, mas completa o ano`);
+                        } else {
+                            setOcrText('⚠️ Leitura parcial - completa os dados');
+                        }
+                    } else {
+                        setOcrText('❌ Não consegui ler o rótulo. Preenche manualmente.');
+                    }
+                } catch (err) {
+                    console.error('OCR error:', err);
+                    setOcrText('❌ Erro ao processar. Tenta novamente.');
+                }
+                
+                setOcrLoading(false);
             };
 
             const startNewWine = (withPhoto = false) => {
@@ -177,6 +244,7 @@
             const resetForm = () => {
                 setNewWine(null);
                 setCapturedImage(null);
+                setOcrText('');
                 setView('cellar');
             };
 
@@ -364,7 +432,7 @@
 
                         {!newWine && (
                             <>
-                                <p style={{marginBottom: '1rem', color: '#666', fontSize: '14px'}}>Fotografa o rótulo (opcional)</p>
+                                <p style={{marginBottom: '1rem', color: '#666', fontSize: '14px'}}>Fotografa o rótulo (com OCR automático)</p>
                                 <button className="btn btn-primary btn-full" onClick={startCamera}>📷 Fotografar</button>
                                 <button className="btn btn-secondary btn-full" onClick={() => fileInputRef.current?.click()}>📁 Upload foto</button>
                                 <input ref={fileInputRef} type="file" accept="image/*" onChange={e => {
@@ -373,7 +441,22 @@
                                         const reader = new FileReader();
                                         reader.onload = (evt) => {
                                             setCapturedImage(evt.target?.result);
-                                            startNewWine(true);
+                                            setNewWine({
+                                                name: '',
+                                                year: new Date().getFullYear(),
+                                                region: '',
+                                                type: 'Tinto',
+                                                grapes: '',
+                                                temperature: '',
+                                                pairings: '',
+                                                aging: '',
+                                                vivinoRating: '',
+                                                myRating: 0,
+                                                notes: '',
+                                                quantity: 1,
+                                                purchaseYear: new Date().getFullYear()
+                                            });
+                                            performOCR(evt.target?.result);
                                         };
                                         reader.readAsDataURL(file);
                                     }
@@ -386,6 +469,21 @@
                         {newWine && (
                             <>
                                 {capturedImage && <img src={capturedImage} className="preview-image" />}
+
+                                {ocrLoading && (
+                                    <div className="alert alert-info">
+                                        <div className="loading">
+                                            <div className="spinner"></div>
+                                            {ocrText}
+                                        </div>
+                                    </div>
+                                )}
+                                
+                                {ocrText && !ocrLoading && (
+                                    <div className={`alert ${ocrText.includes('✅') ? 'alert-success' : ocrText.includes('⚠️') ? 'alert-info' : 'alert-error'}`}>
+                                        {ocrText}
+                                    </div>
+                                )}
 
                                 <div className="form-group">
                                     <label>Nome do vinho *</label>
@@ -521,3 +619,4 @@
     </script>
 </body>
 </html>
+```
