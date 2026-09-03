@@ -19,6 +19,7 @@
         .btn { padding: 12px 16px; border-radius: 8px; font-size: 14px; cursor: pointer; border: none; font-weight: 500; transition: all 0.2s; }
         .btn-primary { background: #378add; color: white; }
         .btn-primary:hover { background: #185fa5; }
+        .btn-primary:disabled { background: #ccc; cursor: not-allowed; }
         .btn-secondary { background: white; color: #1a1a1a; border: 0.5px solid #e0e0e0; }
         .btn-secondary:hover { background: #f5f5f5; }
         .btn-danger { background: #fce0e0; color: #e24b4a; border: 0.5px solid #f5b5b5; }
@@ -31,7 +32,7 @@
         .form-group label { display: block; font-size: 13px; color: #666; margin-bottom: 6px; font-weight: 500; }
         .form-group input, .form-group textarea, .form-group select { width: 100%; padding: 10px; font-size: 14px; border: 0.5px solid #e0e0e0; border-radius: 6px; font-family: inherit; }
         .form-group input:focus, .form-group textarea:focus, .form-group select:focus { outline: none; border-color: #378add; box-shadow: 0 0 0 3px rgba(55, 138, 221, 0.1); }
-        .form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+        .form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 1rem; }
         
         .camera-view { padding: 0; }
         .camera-container { flex: 1; display: flex; overflow: hidden; margin-bottom: 1rem; border-radius: 8px; }
@@ -70,6 +71,12 @@
         
         .alert { padding: 12px; border-radius: 6px; margin-bottom: 1rem; font-size: 13px; }
         .alert-info { background: #e6f1fb; color: #185fa5; border: 0.5px solid #b5d4f4; }
+        .alert-success { background: #e8f5e9; color: #2e7d32; border: 0.5px solid #c8e6c9; }
+        .alert-error { background: #fce0e0; color: #e24b4a; border: 0.5px solid #f5b5b5; }
+        
+        .loading { display: flex; align-items: center; justify-content: center; gap: 8px; color: #666; font-size: 14px; }
+        .spinner { width: 16px; height: 16px; border: 2px solid #e0e0e0; border-top-color: #378add; border-radius: 50%; animation: spin 0.6s linear infinite; }
+        @keyframes spin { to { transform: rotate(360deg); } }
         
         canvas { display: none; }
         input[type="file"] { display: none; }
@@ -88,6 +95,8 @@
             const [newWine, setNewWine] = useState(null);
             const [cameraActive, setCameraActive] = useState(false);
             const [capturedImage, setCapturedImage] = useState(null);
+            const [ocrText, setOcrText] = useState('');
+            const [ocrLoading, setOcrLoading] = useState(false);
             const [filterType, setFilterType] = useState('all');
             const videoRef = useRef(null);
             const canvasRef = useRef(null);
@@ -139,7 +148,43 @@
                         quantity: 1,
                         purchaseYear: new Date().getFullYear()
                     });
+                    performOCR(imageData);
                 }
+            };
+
+            const performOCR = async (imageData) => {
+                setOcrLoading(true);
+                setOcrText('');
+                try {
+                    // Chama o backend para analisar a imagem
+                    const response = await fetch('/api/analyze-wine', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ image: imageData })
+                    });
+
+                    const result = await response.json();
+
+                    if (result.success && result.wineData) {
+                        // Preenche automaticamente os campos com dados extraídos
+                        setNewWine(prev => ({
+                            ...prev,
+                            name: result.wineData.name || prev.name,
+                            year: result.wineData.year || prev.year,
+                            region: result.wineData.region || prev.region,
+                            type: result.wineData.type || prev.type,
+                            vivinoRating: result.wineData.vivinoRating || prev.vivinoRating,
+                            grapes: result.wineData.grapes || prev.grapes
+                        }));
+                        setOcrText(`✅ Detectado: ${result.wineData.name} (${result.wineData.year})`);
+                    } else {
+                        setOcrText('❌ Erro ao processar. Preenche manualmente.');
+                    }
+                } catch (err) {
+                    console.error('OCR error:', err);
+                    setOcrText('⚠️ Erro na análise. Preenche os dados à mão.');
+                }
+                setOcrLoading(false);
             };
 
             const startNewWine = () => {
@@ -194,6 +239,7 @@
             const resetForm = () => {
                 setNewWine(null);
                 setCapturedImage(null);
+                setOcrText('');
                 setView('cellar');
             };
 
@@ -401,6 +447,7 @@
                                                 quantity: 1,
                                                 purchaseYear: new Date().getFullYear()
                                             });
+                                            performOCR(evt.target?.result);
                                         };
                                         reader.readAsDataURL(file);
                                     }
@@ -413,6 +460,21 @@
                         {capturedImage && newWine && (
                             <>
                                 <img src={capturedImage} className="preview-image" />
+
+                                {ocrLoading && (
+                                    <div className="alert alert-info">
+                                        <div className="loading">
+                                            <div className="spinner"></div>
+                                            A processar imagem...
+                                        </div>
+                                    </div>
+                                )}
+                                
+                                {ocrText && !ocrLoading && (
+                                    <div className={`alert ${ocrText.includes('✅') ? 'alert-success' : 'alert-error'}`}>
+                                        {ocrText}
+                                    </div>
+                                )}
 
                                 <div className="form-group">
                                     <label>Nome do vinho *</label>
@@ -447,6 +509,35 @@
                                 <div className="form-group">
                                     <label>Temperatura (°C)</label>
                                     <input type="text" value={newWine.temperature || ''} onChange={e => setNewWine({...newWine, temperature: e.target.value})} placeholder="ex: 14-16" />
+                                </div>
+
+                                <div className="form-group">
+                                    <label>Emparelhamento com comida</label>
+                                    <textarea value={newWine.pairings || ''} onChange={e => setNewWine({...newWine, pairings: e.target.value})} style={{minHeight: '60px'}} placeholder="ex: Carnes vermelhas, queijos duros" />
+                                </div>
+
+                                <div className="form-group">
+                                    <label>Potencial de guarda</label>
+                                    <input type="text" value={newWine.aging || ''} onChange={e => setNewWine({...newWine, aging: e.target.value})} placeholder="ex: Pronto para beber ou Até 2030" />
+                                </div>
+
+                                <div className="form-group">
+                                    <label>Avaliação Vivino</label>
+                                    <input type="number" step="0.1" min="0" max="5" value={newWine.vivinoRating || ''} onChange={e => setNewWine({...newWine, vivinoRating: e.target.value})} placeholder="ex: 3.8" />
+                                </div>
+
+                                <div className="form-group">
+                                    <label>Minha avaliação</label>
+                                    <div className="star-rating">
+                                        {[1,2,3,4,5].map(i => (
+                                            <span key={i} className={`star ${i <= (newWine.myRating || 0) ? 'active' : ''}`} onClick={() => setNewWine({...newWine, myRating: i})}>⭐</span>
+                                        ))}
+                                    </div>
+                                </div>
+
+                                <div className="form-group">
+                                    <label>Observações pessoais</label>
+                                    <textarea value={newWine.notes || ''} onChange={e => setNewWine({...newWine, notes: e.target.value})} style={{minHeight: '60px'}} />
                                 </div>
 
                                 <div className="form-group">
