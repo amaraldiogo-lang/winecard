@@ -137,64 +137,71 @@
             };
 
             const performOCR = async (imageData) => {
-                setOcrLoading(true);
-                setOcrText('🔍 A ler rótulo com Google Vision...');
+    setOcrLoading(true);
+    setOcrText('🔍 A ler rótulo com Google Vision...');
+    
+    try {
+        const visionResponse = await fetch('/api/analyze-wine', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ image: imageData })
+        });
+
+        const visionResult = await visionResponse.json();
+        console.log('Vision result:', visionResult);
+
+        if (visionResult.success && visionResult.wineData) {
+            setNewWine(prev => ({
+                ...prev,
+                name: visionResult.wineData.name || prev.name,
+                year: visionResult.wineData.year || prev.year,
+                region: visionResult.wineData.region || prev.region,
+                type: visionResult.wineData.type || prev.type
+            }));
+
+            setOcrText(`✅ Detectado: ${visionResult.wineData.name} (${visionResult.wineData.year})`);
+
+            // Confirma que ocrText existe
+            if (visionResult.ocrText) {
+                console.log('Sending ocrText to Claude:', visionResult.ocrText.substring(0, 100));
+                setOcrText('🤖 Claude a analisar detalhes...');
                 
-                try {
-                    const visionResponse = await fetch('/api/analyze-wine', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ image: imageData })
-                    });
+                const claudeResponse = await fetch('/api/extract-wine-details', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ ocrText: visionResult.ocrText })
+                });
 
-                    const visionResult = await visionResponse.json();
+                console.log('Claude response status:', claudeResponse.status);
+                const claudeResult = await claudeResponse.json();
+                console.log('Claude result:', claudeResult);
 
-                    if (visionResult.success && visionResult.wineData) {
-                        setNewWine(prev => ({
-                            ...prev,
-                            name: visionResult.wineData.name || prev.name,
-                            year: visionResult.wineData.year || prev.year,
-                            region: visionResult.wineData.region || prev.region,
-                            type: visionResult.wineData.type || prev.type
-                        }));
-
-                        setOcrText(`✅ Detectado: ${visionResult.wineData.name} (${visionResult.wineData.year})`);
-
-                        if (visionResult.ocrText && visionResult.ocrText.trim().length > 5) {
-                            setOcrText('🤖 Claude a analisar detalhes (castas, temperatura, etc)...');
-                            
-                            const claudeResponse = await fetch('/api/extract-wine-details', {
-                                method: 'POST',
-                                headers: { 'Content-Type': 'application/json' },
-                                body: JSON.stringify({ ocrText: visionResult.ocrText })
-                            });
-
-                            const claudeResult = await claudeResponse.json();
-
-                            if (claudeResult.success && claudeResult.wineDetails) {
-                                setNewWine(prev => ({
-                                    ...prev,
-                                    grapes: claudeResult.wineDetails.castas || prev.grapes,
-                                    temperature: claudeResult.wineDetails.temperatura || prev.temperature,
-                                    pairings: claudeResult.wineDetails.emparelhamento || prev.pairings,
-                                    aging: claudeResult.wineDetails.guarda || prev.aging
-                                }));
-                                
-                                setOcrText(`✅ ${visionResult.wineData.name} (${visionResult.wineData.year}) - Dados completos!`);
-                            } else {
-                                setOcrText(`⚠️ Claude não conseguiu extrair detalhes, mas nome e ano foram detectados`);
-                            }
-                        }
-                    } else {
-                        setOcrText('❌ Não consegui ler o rótulo. Preenche manualmente.');
-                    }
-                } catch (err) {
-                    console.error('OCR error:', err);
-                    setOcrText('❌ Erro ao processar. Tenta novamente.');
+                if (claudeResult.success && claudeResult.wineDetails) {
+                    setNewWine(prev => ({
+                        ...prev,
+                        grapes: claudeResult.wineDetails.castas || prev.grapes,
+                        temperature: claudeResult.wineDetails.temperatura || prev.temperature,
+                        pairings: claudeResult.wineDetails.emparelhamento || prev.pairings,
+                        aging: claudeResult.wineDetails.guarda || prev.aging
+                    }));
+                    
+                    setOcrText(`✅ ${visionResult.wineData.name} (${visionResult.wineData.year}) - Dados completos!`);
+                } else {
+                    setOcrText(`⚠️ Claude não conseguiu extrair detalhes, mas nome e ano foram detectados`);
                 }
-                
-                setOcrLoading(false);
-            };
+            } else {
+                setOcrText(`⚠️ ocrText não foi retornado pelo Google Vision`);
+            }
+        } else {
+            setOcrText('❌ Não consegui ler o rótulo. Preenche manualmente.');
+        }
+    } catch (err) {
+        console.error('OCR error:', err);
+        setOcrText('❌ Erro ao processar. Tenta novamente.');
+    }
+    
+    setOcrLoading(false);
+};
 
             const startNewWine = (withPhoto = false) => {
                 setNewWine({
