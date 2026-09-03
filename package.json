@@ -7,8 +7,6 @@
     "dev": "vercel dev"
   },
   "dependencies": {
-    "tesseract.js": "^5.0.4",
-    "axios": "^1.6.0",
-    "cheerio": "^1.0.0-rc.12"
+    "@google-cloud/vision": "^3.4.0"
   }
 }
