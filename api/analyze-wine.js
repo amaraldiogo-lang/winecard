@@ -1,6 +1,6 @@
-import vision from '@google-cloud/vision';
+const vision = require('@google-cloud/vision');
 
-export default async function handler(req, res) {
+module.exports = async function handler(req, res) {
   if (req.method !== 'POST') {
     return res.status(405).json({ error: 'Method not allowed' });
   }
@@ -12,7 +12,6 @@ export default async function handler(req, res) {
   }
 
   try {
-    // Parse credenciais
     let credentials;
     try {
       credentials = JSON.parse(process.env.GOOGLE_APPLICATION_CREDENTIALS);
@@ -23,17 +22,15 @@ export default async function handler(req, res) {
       });
     }
 
-    // Cria cliente com credenciais
     const client = new vision.ImageAnnotatorClient({
       credentials: credentials
     });
 
-    // Remove prefixo base64
     const base64Data = image.split(',')[1] || image;
 
     const request = {
       image: { content: base64Data },
-      features: [{ type: 'TEXT_DETECTION' }],
+      features: [{ type: 'TEXT_DETECTION' }]
     };
 
     const [result] = await client.annotateImage(request);
@@ -54,7 +51,6 @@ export default async function handler(req, res) {
       type: 'Tinto'
     };
 
-    // Ano
     for (const line of lines) {
       const yearMatch = line.match(/\b(19|20)\d{2}\b/);
       if (yearMatch) {
@@ -63,7 +59,6 @@ export default async function handler(req, res) {
       }
     }
 
-    // Nome
     for (const line of lines) {
       const trimmed = line.trim();
       if (trimmed.length > 3 && trimmed.length < 80 && !/^\d+$/.test(trimmed)) {
@@ -72,7 +67,6 @@ export default async function handler(req, res) {
       }
     }
 
-    // Tipo
     const textLower = ocrText.toLowerCase();
     if (textLower.includes('branco')) {
       wineData.type = 'Branco';
@@ -80,7 +74,6 @@ export default async function handler(req, res) {
       wineData.type = 'Rosé';
     }
 
-    // Região
     if (textLower.includes('douro')) {
       wineData.region = 'Douro';
     } else if (textLower.includes('setúbal')) {
@@ -91,7 +84,7 @@ export default async function handler(req, res) {
 
     return res.status(200).json({
       success: true,
-      wineData: wineData
+      wineData: wineData,
       ocrText: ocrText
     });
 
@@ -102,4 +95,4 @@ export default async function handler(req, res) {
       error: error.message || 'Unknown error'
     });
   }
-}
+};
