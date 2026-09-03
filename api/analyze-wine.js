@@ -5,46 +5,89 @@ export default async function handler(req, res) {
     return res.status(405).json({ error: 'Method not allowed' });
   }
 
-  const { ocrText } = req.body;
+  const { image } = req.body;
 
-  if (!ocrText) {
-    return res.status(400).json({ error: 'No text provided' });
+  if (!image) {
+    return res.status(400).json({ error: 'No image provided' });
   }
 
   try {
+    // Converte base64 para o formato que a API espera
+    const base64Data = image.split(',')[1] || image;
+
+    // Chama API de OCR gratuita
+    const ocrResponse = await axios.post(
+      'https://api.ocr.space/parse/image',
+      {
+        base64Image: `data:image/jpeg;base64,${base64Data}`,
+        apikey: 'K87899142872957',
+        language: 'por'
+      },
+      { timeout: 15000 }
+    );
+
+    const ocrText = ocrResponse.data.parsedText || '';
+
+    if (!ocrText || ocrText.trim().length < 5) {
+      return res.status(200).json({
+        success: false,
+        message: 'Não consegui ler o rótulo'
+      });
+    }
+
+    // ===== Parse do texto =====
+    const lines = ocrText.split('\n').filter(l => l.trim().length > 0);
+    
     const wineData = {
-      vivinoRating: null,
-      temperature: '',
-      pairings: '',
-      aging: ''
+      name: '',
+      year: null,
+      region: '',
+      type: 'Tinto'
     };
 
-    // Tenta extrair rating do Vivino (se recebeu nome)
-    const lines = ocrText.split('\n');
-    const possibleName = lines.find(l => l.length > 5 && l.length < 50);
-    
-    if (possibleName) {
-      try {
-        const searchUrl = `https://www.vivino.com/search?q=${encodeURIComponent(possibleName)}`;
-        const { data: html } = await axios.get(searchUrl, {
-          timeout: 3000,
-          headers: {
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
-          }
-        });
-
-        // Tenta extrair rating
-        const ratingMatch = html.match(/data-average-rating["\']?\s*:\s*["']?([0-9.]+)/i);
-        if (ratingMatch) {
-          wineData.vivinoRating = parseFloat(ratingMatch[1]);
-        }
-      } catch (err) {
-        console.log('Vivino search skipped');
+    // Procura o ano (padrão: 19xx ou 20xx)
+    for (const line of lines) {
+      const yearMatch = line.match(/\b(19|20)\d{2}\b/);
+      if (yearMatch) {
+        wineData.year = parseInt(yearMatch[0]);
+        break;
       }
+    }
+
+    // Procura o nome (geralmente a primeira linha legível ou antes da data)
+    for (const line of lines) {
+      const cleaned = line.trim();
+      if (cleaned.length > 3 && cleaned.length < 80 && !cleaned.match(/^\d+/) && !cleaned.match(/\.com|http|@/)) {
+        if (!wineData.name || cleaned.length > wineData.name.length) {
+          wineData.name = cleaned;
+        }
+      }
+    }
+
+    // Detecta tipo
+    const textLower = ocrText.toLowerCase();
+    if (textLower.includes('branco') || textLower.includes('white') || textLower.includes('blanco')) {
+      wineData.type = 'Branco';
+    } else if (textLower.includes('rosé') || textLower.includes('rosado') || textLower.includes('rose')) {
+      wineData.type = 'Rosé';
+    }
+
+    // Tenta extrair região
+    if (textLower.includes('douro') || textLower.includes('doiro')) {
+      wineData.region = 'Douro';
+    } else if (textLower.includes('setúbal') || textLower.includes('setubal')) {
+      wineData.region = 'Setúbal';
+    } else if (textLower.includes('alentejo')) {
+      wineData.region = 'Alentejo';
+    } else if (textLower.includes('dão') || textLower.includes('dao')) {
+      wineData.region = 'Dão';
+    } else if (textLower.includes('bairrada')) {
+      wineData.region = 'Bairrada';
     }
 
     return res.status(200).json({
       success: true,
+      ocrText: ocrText,
       wineData: wineData
     });
 
