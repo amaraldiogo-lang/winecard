@@ -1,4 +1,4 @@
-import axios from 'axios';
+import vision from '@google-cloud/vision';
 
 export default async function handler(req, res) {
   if (req.method !== 'POST') {
@@ -12,21 +12,19 @@ export default async function handler(req, res) {
   }
 
   try {
-    // Converte base64 para o formato que a API espera
+    const credentials = JSON.parse(process.env.GOOGLE_APPLICATION_CREDENTIALS);
+    const client = new vision.ImageAnnotatorClient({ credentials });
+
+    // Remove o prefixo base64
     const base64Data = image.split(',')[1] || image;
 
-    // Chama API de OCR gratuita
-    const ocrResponse = await axios.post(
-      'https://api.ocr.space/parse/image',
-      {
-        base64Image: `data:image/jpeg;base64,${base64Data}`,
-        apikey: 'K87899142872957',
-        language: 'por'
-      },
-      { timeout: 15000 }
-    );
+    const request = {
+      image: { content: base64Data },
+      features: [{ type: 'TEXT_DETECTION' }],
+    };
 
-    const ocrText = ocrResponse.data.parsedText || '';
+    const [result] = await client.annotateImage(request);
+    const ocrText = result.fullTextAnnotation?.text || '';
 
     if (!ocrText || ocrText.trim().length < 5) {
       return res.status(200).json({
@@ -35,9 +33,8 @@ export default async function handler(req, res) {
       });
     }
 
-    // ===== Parse do texto =====
-    const lines = ocrText.split('\n').filter(l => l.trim().length > 0);
-    
+    // Parse
+    const lines = ocrText.split('\n').filter(l => l.trim().length > 1);
     const wineData = {
       name: '',
       year: null,
@@ -45,7 +42,7 @@ export default async function handler(req, res) {
       type: 'Tinto'
     };
 
-    // Procura o ano (padrão: 19xx ou 20xx)
+    // Ano
     for (const line of lines) {
       const yearMatch = line.match(/\b(19|20)\d{2}\b/);
       if (yearMatch) {
@@ -54,40 +51,34 @@ export default async function handler(req, res) {
       }
     }
 
-    // Procura o nome (geralmente a primeira linha legível ou antes da data)
+    // Nome - primeira linha legível
     for (const line of lines) {
-      const cleaned = line.trim();
-      if (cleaned.length > 3 && cleaned.length < 80 && !cleaned.match(/^\d+/) && !cleaned.match(/\.com|http|@/)) {
-        if (!wineData.name || cleaned.length > wineData.name.length) {
-          wineData.name = cleaned;
-        }
+      const trimmed = line.trim();
+      if (trimmed.length > 3 && trimmed.length < 80) {
+        wineData.name = trimmed;
+        break;
       }
     }
 
-    // Detecta tipo
+    // Tipo
     const textLower = ocrText.toLowerCase();
-    if (textLower.includes('branco') || textLower.includes('white') || textLower.includes('blanco')) {
+    if (textLower.includes('branco')) {
       wineData.type = 'Branco';
-    } else if (textLower.includes('rosé') || textLower.includes('rosado') || textLower.includes('rose')) {
+    } else if (textLower.includes('rosé') || textLower.includes('rosado')) {
       wineData.type = 'Rosé';
     }
 
-    // Tenta extrair região
-    if (textLower.includes('douro') || textLower.includes('doiro')) {
+    // Região
+    if (textLower.includes('douro')) {
       wineData.region = 'Douro';
-    } else if (textLower.includes('setúbal') || textLower.includes('setubal')) {
+    } else if (textLower.includes('setúbal')) {
       wineData.region = 'Setúbal';
     } else if (textLower.includes('alentejo')) {
       wineData.region = 'Alentejo';
-    } else if (textLower.includes('dão') || textLower.includes('dao')) {
-      wineData.region = 'Dão';
-    } else if (textLower.includes('bairrada')) {
-      wineData.region = 'Bairrada';
     }
 
     return res.status(200).json({
       success: true,
-      ocrText: ocrText,
       wineData: wineData
     });
 
