@@ -154,9 +154,9 @@
 
             const performOCR = async (imageData) => {
                 setOcrLoading(true);
-                setOcrText('');
+                setOcrText('🔍 A analisar rótulo...');
+                
                 try {
-                    // Chama o backend para analisar a imagem
                     const response = await fetch('/api/analyze-wine', {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
@@ -166,7 +166,6 @@
                     const result = await response.json();
 
                     if (result.success && result.wineData) {
-                        // Preenche automaticamente os campos com dados extraídos
                         setNewWine(prev => ({
                             ...prev,
                             name: result.wineData.name || prev.name,
@@ -176,14 +175,20 @@
                             vivinoRating: result.wineData.vivinoRating || prev.vivinoRating,
                             grapes: result.wineData.grapes || prev.grapes
                         }));
-                        setOcrText(`✅ Detectado: ${result.wineData.name} (${result.wineData.year})`);
+                        
+                        if (result.wineData.name && result.wineData.year) {
+                            setOcrText(`✅ Detectado: ${result.wineData.name} (${result.wineData.year})`);
+                        } else {
+                            setOcrText('⚠️ Leitura parcial - completa os dados');
+                        }
                     } else {
                         setOcrText('❌ Erro ao processar. Preenche manualmente.');
                     }
                 } catch (err) {
                     console.error('OCR error:', err);
-                    setOcrText('⚠️ Erro na análise. Preenche os dados à mão.');
+                    setOcrText('❌ Erro na conexão. Tenta novamente.');
                 }
+                
                 setOcrLoading(false);
             };
 
