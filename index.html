@@ -167,14 +167,11 @@
                 setSelectedWine(null);
             };
 
-            const deleteWine = (id, qty = 1) => {
-                const wine = wines.find(w => w.id === id);
-                if (wine && wine.quantity > qty) {
-                    updateWine(id, { quantity: wine.quantity - qty });
-                } else {
+            const deleteWine = (id) => {
+                if (confirm('Tens a certeza?')) {
                     setWines(wines.filter(w => w.id !== id));
+                    setSelectedWine(null);
                 }
-                setSelectedWine(null);
             };
 
             const resetForm = () => {
@@ -202,8 +199,8 @@
                         </div>
                         {capturedImage && (
                             <div className="button-row">
-                                <button className="btn btn-secondary" onClick={() => setCapturedImage(null)}>Tirar outra</button>
-                                <button className="btn btn-primary" onClick={() => startNewWine(true)}>Continuar com esta</button>
+                                <button className="btn btn-secondary" onClick={() => setCapturedImage(null)}>Outra foto</button>
+                                <button className="btn btn-primary" onClick={() => startNewWine(true)}>Usar esta foto</button>
                             </div>
                         )}
                     </div>
@@ -241,32 +238,32 @@
 
                         <div className="form-group">
                             <label>Região</label>
-                            <input type="text" value={editingWine.region || ''} onChange={e => setEditingWine({...editingWine, region: e.target.value})} placeholder="ex: Douro, Setúbal" />
+                            <input type="text" value={editingWine.region || ''} onChange={e => setEditingWine({...editingWine, region: e.target.value})} placeholder="ex: Douro" />
                         </div>
 
                         <div className="form-group">
                             <label>Castas</label>
-                            <input type="text" value={editingWine.grapes || ''} onChange={e => setEditingWine({...editingWine, grapes: e.target.value})} placeholder="ex: Touriga Nacional, Tinta Barroca" />
+                            <input type="text" value={editingWine.grapes || ''} onChange={e => setEditingWine({...editingWine, grapes: e.target.value})} />
                         </div>
 
                         <div className="form-group">
-                            <label>Temperatura ideal (°C)</label>
+                            <label>Temperatura (°C)</label>
                             <input type="text" value={editingWine.temperature || ''} onChange={e => setEditingWine({...editingWine, temperature: e.target.value})} placeholder="ex: 14-16" />
                         </div>
 
                         <div className="form-group">
                             <label>Emparelhamento com comida</label>
-                            <textarea value={editingWine.pairings || ''} onChange={e => setEditingWine({...editingWine, pairings: e.target.value})} style={{minHeight: '60px'}} placeholder="ex: Carnes vermelhas, queijos duros" />
+                            <textarea value={editingWine.pairings || ''} onChange={e => setEditingWine({...editingWine, pairings: e.target.value})} style={{minHeight: '50px'}} />
                         </div>
 
                         <div className="form-group">
                             <label>Potencial de guarda</label>
-                            <input type="text" value={editingWine.aging || ''} onChange={e => setEditingWine({...editingWine, aging: e.target.value})} placeholder="ex: Pronto para beber ou Até 2030" />
+                            <input type="text" value={editingWine.aging || ''} onChange={e => setEditingWine({...editingWine, aging: e.target.value})} placeholder="ex: Até 2030" />
                         </div>
 
                         <div className="form-group">
                             <label>Avaliação Vivino</label>
-                            <input type="number" step="0.1" min="0" max="5" value={editingWine.vivinoRating || ''} onChange={e => setEditingWine({...editingWine, vivinoRating: e.target.value})} placeholder="ex: 3.8" />
+                            <input type="number" step="0.1" min="0" max="5" value={editingWine.vivinoRating || ''} onChange={e => setEditingWine({...editingWine, vivinoRating: e.target.value})} />
                         </div>
 
                         <div className="form-group">
@@ -280,18 +277,12 @@
 
                         <div className="form-group">
                             <label>Observações</label>
-                            <textarea value={editingWine.notes || ''} onChange={e => setEditingWine({...editingWine, notes: e.target.value})} style={{minHeight: '60px'}} />
+                            <textarea value={editingWine.notes || ''} onChange={e => setEditingWine({...editingWine, notes: e.target.value})} style={{minHeight: '50px'}} />
                         </div>
 
-                        <div className="form-row">
-                            <div className="form-group">
-                                <label>Quantidade</label>
-                                <input type="number" min="1" value={editingWine.quantity || 1} onChange={e => setEditingWine({...editingWine, quantity: parseInt(e.target.value) || 1})} />
-                            </div>
-                            <div className="form-group">
-                                <label>Ano de compra</label>
-                                <input type="number" min="2000" max={new Date().getFullYear()} value={editingWine.purchaseYear || ''} onChange={e => setEditingWine({...editingWine, purchaseYear: parseInt(e.target.value)})} />
-                            </div>
+                        <div className="form-group">
+                            <label>Quantidade</label>
+                            <input type="number" min="1" value={editingWine.quantity || 1} onChange={e => setEditingWine({...editingWine, quantity: parseInt(e.target.value) || 1})} />
                         </div>
 
                         <div className="button-row">
@@ -358,7 +349,7 @@
 
                         <div className="button-row">
                             <button className="btn btn-secondary" onClick={() => setEditingWine(selectedWine)}>Editar</button>
-                            <button className="btn btn-danger" onClick={() => deleteWine(selectedWine.id)}>Marcar como bebido</button>
+                            <button className="btn btn-danger" onClick={() => deleteWine(selectedWine.id)}>Eliminar</button>
                         </div>
                     </div>
                 );
@@ -371,10 +362,10 @@
                         <button className="back-btn" onClick={resetForm}>← Voltar</button>
                         <h2>Adicionar vinho</h2>
 
-                        {!capturedImage && !newWine && (
+                        {!newWine && (
                             <>
-                                <p style={{marginBottom: '1rem', color: '#666', fontSize: '14px'}}>Começa por fotografar o rótulo (opcional)</p>
-                                <button className="btn btn-primary btn-full" onClick={startCamera}>📷 Fotografar rótulo</button>
+                                <p style={{marginBottom: '1rem', color: '#666', fontSize: '14px'}}>Fotografa o rótulo (opcional)</p>
+                                <button className="btn btn-primary btn-full" onClick={startCamera}>📷 Fotografar</button>
                                 <button className="btn btn-secondary btn-full" onClick={() => fileInputRef.current?.click()}>📁 Upload foto</button>
                                 <input ref={fileInputRef} type="file" accept="image/*" onChange={e => {
                                     const file = e.target.files?.[0];
@@ -388,7 +379,7 @@
                                     }
                                 }} />
                                 <p style={{marginTop: '2rem', fontSize: '13px', color: '#999', textAlign: 'center'}}>Ou preenche sem foto</p>
-                                <button className="btn btn-secondary btn-full" onClick={() => startNewWine(false)}>✏️ Preencher à mão</button>
+                                <button className="btn btn-secondary btn-full" onClick={() => startNewWine(false)}>✏️ Sem foto</button>
                             </>
                         )}
 
@@ -398,13 +389,13 @@
 
                                 <div className="form-group">
                                     <label>Nome do vinho *</label>
-                                    <input type="text" value={newWine.name || ''} onChange={e => setNewWine({...newWine, name: e.target.value})} placeholder="ex: Monte Meão, João Pires" autoFocus />
+                                    <input type="text" value={newWine.name || ''} onChange={e => setNewWine({...newWine, name: e.target.value})} placeholder="ex: Monte Meão" autoFocus />
                                 </div>
 
                                 <div className="form-row">
                                     <div className="form-group">
                                         <label>Ano</label>
-                                        <input type="number" value={newWine.year || ''} onChange={e => setNewWine({...newWine, year: e.target.value})} placeholder="2014" />
+                                        <input type="number" value={newWine.year || ''} onChange={e => setNewWine({...newWine, year: parseInt(e.target.value) || 0})} placeholder="2014" />
                                     </div>
                                     <div className="form-group">
                                         <label>Tipo</label>
@@ -418,32 +409,32 @@
 
                                 <div className="form-group">
                                     <label>Região</label>
-                                    <input type="text" value={newWine.region || ''} onChange={e => setNewWine({...newWine, region: e.target.value})} placeholder="ex: Douro, Setúbal, Alentejo" />
+                                    <input type="text" value={newWine.region || ''} onChange={e => setNewWine({...newWine, region: e.target.value})} placeholder="ex: Douro" />
                                 </div>
 
                                 <div className="form-group">
                                     <label>Castas (opcional)</label>
-                                    <input type="text" value={newWine.grapes || ''} onChange={e => setNewWine({...newWine, grapes: e.target.value})} placeholder="ex: Touriga Nacional" />
+                                    <input type="text" value={newWine.grapes || ''} onChange={e => setNewWine({...newWine, grapes: e.target.value})} />
                                 </div>
 
                                 <div className="form-group">
                                     <label>Temperatura (opcional)</label>
-                                    <input type="text" value={newWine.temperature || ''} onChange={e => setNewWine({...newWine, temperature: e.target.value})} placeholder="ex: 14-16°C" />
+                                    <input type="text" value={newWine.temperature || ''} onChange={e => setNewWine({...newWine, temperature: e.target.value})} placeholder="14-16°C" />
                                 </div>
 
                                 <div className="form-group">
                                     <label>Emparelhamento (opcional)</label>
-                                    <textarea value={newWine.pairings || ''} onChange={e => setNewWine({...newWine, pairings: e.target.value})} style={{minHeight: '50px'}} placeholder="ex: Carnes, queijos duros" />
+                                    <textarea value={newWine.pairings || ''} onChange={e => setNewWine({...newWine, pairings: e.target.value})} style={{minHeight: '50px'}} />
                                 </div>
 
                                 <div className="form-group">
                                     <label>Potencial de guarda (opcional)</label>
-                                    <input type="text" value={newWine.aging || ''} onChange={e => setNewWine({...newWine, aging: e.target.value})} placeholder="ex: Até 2030" />
+                                    <input type="text" value={newWine.aging || ''} onChange={e => setNewWine({...newWine, aging: e.target.value})} placeholder="Até 2030" />
                                 </div>
 
                                 <div className="form-group">
                                     <label>Avaliação Vivino (opcional)</label>
-                                    <input type="number" step="0.1" min="0" max="5" value={newWine.vivinoRating || ''} onChange={e => setNewWine({...newWine, vivinoRating: e.target.value})} placeholder="3.8" />
+                                    <input type="number" step="0.1" min="0" max="5" value={newWine.vivinoRating || ''} onChange={e => setNewWine({...newWine, vivinoRating: e.target.value})} />
                                 </div>
 
                                 <div className="form-group">
@@ -457,7 +448,7 @@
 
                                 <div className="form-group">
                                     <label>Observações (opcional)</label>
-                                    <textarea value={newWine.notes || ''} onChange={e => setNewWine({...newWine, notes: e.target.value})} style={{minHeight: '50px'}} placeholder="Notas pessoais, sabor, experiência..." />
+                                    <textarea value={newWine.notes || ''} onChange={e => setNewWine({...newWine, notes: e.target.value})} style={{minHeight: '50px'}} />
                                 </div>
 
                                 <div className="form-group">
@@ -517,8 +508,7 @@
                         </>
                     ) : (
                         <div className="empty-state">
-                            <p style={{marginBottom: '1rem', fontSize: '16px'}}>Nenhum vinho na garrafeira ainda</p>
-                            <p style={{fontSize: '13px', color: '#999'}}>Começa a adicionar os teus vinhos</p>
+                            <p>Nenhum vinho na garrafeira</p>
                         </div>
                     )}
 
