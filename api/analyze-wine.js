@@ -1,6 +1,6 @@
-const vision = require('@google-cloud/vision');
+import vision from '@google-cloud/vision';
 
-module.exports = async function handler(req, res) {
+export default async function handler(req, res) {
   if (req.method !== 'POST') {
     return res.status(405).json({ error: 'Method not allowed' });
   }
@@ -12,19 +12,9 @@ module.exports = async function handler(req, res) {
   }
 
   try {
-    let credentials;
-    try {
-      credentials = JSON.parse(process.env.GOOGLE_APPLICATION_CREDENTIALS);
-    } catch (parseError) {
-      return res.status(500).json({
-        success: false,
-        error: 'Invalid credentials format: ' + parseError.message
-      });
-    }
-
-    const client = new vision.ImageAnnotatorClient({
-      credentials: credentials
-    });
+    let credentials = JSON.parse(process.env.GOOGLE_APPLICATION_CREDENTIALS);
+    
+    const client = new vision.ImageAnnotatorClient({ credentials });
 
     const base64Data = image.split(',')[1] || image;
 
@@ -89,10 +79,9 @@ module.exports = async function handler(req, res) {
     });
 
   } catch (error) {
-    console.error('Vision API Error:', error);
     return res.status(500).json({
       success: false,
-      error: error.message || 'Unknown error'
+      error: error.message
     });
   }
-};
+}
